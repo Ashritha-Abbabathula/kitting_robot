@@ -12,7 +12,7 @@
     <param name="rate_hz" value="$(arg rate_hz)" />
   </node>
 
-  <node name="whatsapp_node" pkg="kitting_robot" type="whatsapp_node.py" output="screen" />
+  <node name="notify_node" pkg="kitting_robot" type="notify_node.py" output="screen" />
 
   <node name="dobot_node" pkg="kitting_robot" type="dobot_node.py" output="screen">
     <param name="simulate" value="$(arg simulate)" />

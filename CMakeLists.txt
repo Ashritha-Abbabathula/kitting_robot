@@ -10,7 +10,7 @@ catkin_package()
 
 catkin_install_python(PROGRAMS
   scripts/perception_node.py
-  scripts/whatsapp_node.py
+  scripts/notify_node.py
   scripts/dobot_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

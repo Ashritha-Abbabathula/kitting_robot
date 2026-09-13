@@ -9,9 +9,13 @@ should see 8/8 passed. This is the actual brains of the project:
 - `qr_logic.py` — reads a QR code from a camera frame
 - `checklist_logic.py` — looks up what's required for a given mode
 - `vision_logic.py` — checks whether an item's colour is visible in a frame
-- `whatsapp_logic.py` — sends (or fakes sending) a WhatsApp message
+- `notify_logic.py` — sends (or fakes sending) an email alert when items are missing
 - `dobot_logic.py` — moves the arm, with a **simulated** version that just
   logs what it would do, so you can run the whole thing without the arm
+
+Notifications go by email, not SMS/WhatsApp — no Twilio account, sandbox,
+or phone verification needed. Just your own email address and a Gmail
+"app password" (see `config/secrets.example.yaml` for the exact steps).
 
 ## What's left for tomorrow
 
@@ -26,7 +30,7 @@ should see 8/8 passed. This is the actual brains of the project:
    real HSV ranges (do this even if you tuned them tonight at home —
    lighting changes the numbers).
 6. Copy `config/secrets.example.yaml` to `config/secrets.yaml` and fill in
-   your real Twilio sandbox details (see comments in that file).
+   your real email + app password (see comments in that file).
 7. Run it:
    ```
    roslaunch kitting_robot kitting.launch                        # simulated arm, safe default
@@ -41,14 +45,14 @@ same launch file, one flag.
 ```
 pip install -r requirements.txt
 python3 test/test_logic.py                 # confirm everything passes
+python3 demo_integration.py --webcam       # watch the whole pipeline run, end to end
 python3 tools/color_picker.py              # click on your objects to get HSV ranges
 ```
 
 If `pyzbar` fails to install (it needs a system library called `libzbar`
-that pip can't install by itself), the QR code will still work — the code
-automatically falls back to OpenCV's built-in QR reader (see
-`kitting_logic/qr_logic.py`). Installing `libzbar` properly tomorrow is
-still worth doing since it's more reliable, but it's not a blocker tonight.
+that pip can't install by itself on Linux — Windows usually just works),
+the QR code will still work — the code automatically falls back to
+OpenCV's built-in QR reader (see `kitting_logic/qr_logic.py`).
 
 One QR-printing tip that actually mattered when testing this: print your
 QR codes at a reasonable size (a few cm across) with a plain white margin
@@ -75,8 +79,9 @@ source devel/setup.bash
 kitting_robot/
   kitting_logic/        <- pure Python, no ROS — the actual logic, tested tonight
   scripts/               <- thin ROS node wrappers around kitting_logic/
-  config/                <- checklists, coordinates, Twilio secrets (fill in for real)
+  config/                <- checklists, coordinates, email secrets (fill in for real)
   launch/kitting.launch   <- starts all three nodes together
   tools/color_picker.py   <- click-to-get-HSV-range helper for tuning item colours
   test/test_logic.py      <- run tonight, no ROS needed
+  demo_integration.py     <- run the whole pipeline end-to-end right now, no ROS needed
 ```

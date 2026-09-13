@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 """
-ROS1 node: watches /missing_items and /task_mode, and sends a WhatsApp
-message whenever the missing-items list changes (rate-limited so it
-doesn't spam every camera frame).
+ROS1 node: watches /missing_items and /task_mode, and sends an email
+whenever the missing-items list changes (rate-limited so it doesn't spam
+every camera frame).
 
 Uses a FAKE notifier by default (just prints) unless config/secrets.yaml
-exists with real Twilio credentials — so this is safe to launch tonight
-without any risk of accidentally trying to hit a real API with placeholder
-credentials.
+exists with real email credentials — so this is safe to launch tonight
+without any risk of accidentally trying to send with placeholder creds.
 """
 import json
 import os
 import sys
 
 import rospy
-import yaml
 from std_msgs.msg import String
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from kitting_logic.whatsapp_logic import format_missing_message, build_notifier
+from kitting_logic.notify_logic import format_missing_message, build_notifier
 
 _state = {"mode": None, "notifier": None}
 
@@ -35,7 +33,7 @@ def mode_callback(msg):
 
 
 def main():
-    rospy.init_node("whatsapp_node")
+    rospy.init_node("notify_node")
     secrets_path = rospy.get_param(
         "~secrets_path",
         os.path.join(os.path.dirname(__file__), "..", "config", "secrets.yaml"),
@@ -46,7 +44,7 @@ def main():
     rospy.Subscriber("/missing_items", String, missing_callback)
     rospy.Subscriber("/task_mode", String, mode_callback)
 
-    rospy.loginfo("whatsapp_node: ready")
+    rospy.loginfo("notify_node: ready")
     rospy.spin()
 
 

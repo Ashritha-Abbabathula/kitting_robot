@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from kitting_logic.qr_logic import normalize_mode
 from kitting_logic.checklist_logic import get_required_items
 from kitting_logic.vision_logic import item_present, find_missing_items
-from kitting_logic.whatsapp_logic import format_missing_message, FakeWhatsAppNotifier, RateLimitedNotifier
+from kitting_logic.notify_logic import format_missing_message, FakeEmailNotifier, RateLimitedNotifier
 from kitting_logic.dobot_logic import SimulatedDobot, run_pick_and_place
 
 
@@ -73,7 +73,7 @@ def test_format_missing_message():
 
 
 def test_rate_limited_notifier_dedupes():
-    fake = FakeWhatsAppNotifier()
+    fake = FakeEmailNotifier()
     limiter = RateLimitedNotifier(fake, min_interval=100)
     limiter.maybe_send("missing: a", now=0)
     limiter.maybe_send("missing: a", now=1)  # same body, too soon — should NOT resend
