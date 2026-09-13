@@ -1,0 +1,26 @@
+# Arm coordinates and pick-and-place sequences per mode.
+# THESE ARE PLACEHOLDERS. Tomorrow, jog the real arm to each real position
+# and replace these numbers — don't trust these values, they're just here
+# so the pipeline runs end-to-end tonight in simulation.
+#
+# Units follow whatever pydobot/the Dobot API returns for your arm (mm for
+# x/y/z, degrees for r) — jogging and reading back the position tomorrow
+# will show you the actual numbers to use.
+
+home: {x: 200, y: 0, z: 50, r: 0}
+
+bins:
+  red_block:   {x: 150, y: 150, z: 0, r: 0}
+  blue_block:  {x: 150, y: -150, z: 0, r: 0}
+  screw_pack:  {x: 200, y: 150, z: 0, r: 0}
+
+pickup:
+  # If every item is picked up from the same fixed spot (e.g. off the
+  # conveyor), one entry is enough. If pickup locations differ per item,
+  # add one entry per item name here instead.
+  default: {x: 200, y: 0, z: 0, r: 0}
+
+# Sequence for one item: move above pickup, descend, suck on, lift, move
+# above bin, descend, suck off, lift, return home. This is used as a
+# *template* — the real node fills in the actual x/y/z per item at runtime.
+hover_height_offset: 40
