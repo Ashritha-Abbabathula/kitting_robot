@@ -4,7 +4,10 @@ WhatsApp messaging logic — no ROS, no hardware dependency.
 Fully testable and usable tonight: this doesn't touch the Dobot or the
 lab camera at all. Get this working end-to-end before tomorrow.
 """
+import os
 from typing import List, Optional
+
+import yaml
 
 
 def format_missing_message(mode: str, missing: List[str]) -> str:
@@ -70,3 +73,32 @@ class RateLimitedNotifier:
             self._last_sent_at = now
             return True
         return False
+
+
+def build_notifier(secrets_path: str, min_interval: float = 8.0):
+    """
+    Shared by whatsapp_node.py and demo_integration.py, so both behave
+    the same way: if config/secrets.yaml exists with real Twilio details,
+    use it and send REAL WhatsApp messages. Otherwise, safely fall back
+    to printing what would have been sent.
+    """
+    if os.path.exists(secrets_path):
+        with open(secrets_path) as f:
+            creds = (yaml.safe_load(f) or {}).get("twilio", {})
+        try:
+            real = WhatsAppNotifier(
+                account_sid=creds["account_sid"],
+                auth_token=creds["auth_token"],
+                from_whatsapp=creds["from_whatsapp"],
+                to_whatsapp=creds["to_whatsapp"],
+            )
+            print("[whatsapp] Found config/secrets.yaml — sending REAL WhatsApp messages.")
+            return RateLimitedNotifier(real, min_interval=min_interval)
+        except Exception as e:
+            print(f"[whatsapp] config/secrets.yaml exists but failed to use it ({e}) "
+                  f"— falling back to fake/printed messages.")
+
+    print("[whatsapp] No config/secrets.yaml found — messages will only be printed, "
+          "not really sent. Copy config/secrets.example.yaml to config/secrets.yaml "
+          "and fill in your Twilio details to send real WhatsApp messages.")
+    return RateLimitedNotifier(FakeWhatsAppNotifier(), min_interval=min_interval)

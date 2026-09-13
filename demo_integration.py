@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from kitting_logic.qr_logic import decode_qr, normalize_mode
 from kitting_logic.checklist_logic import load_checklists, get_required_items
 from kitting_logic.vision_logic import find_missing_items
-from kitting_logic.whatsapp_logic import format_missing_message, FakeWhatsAppNotifier, RateLimitedNotifier
+from kitting_logic.whatsapp_logic import format_missing_message, build_notifier
 from kitting_logic.dobot_logic import SimulatedDobot, run_pick_and_place
 from kitting_logic.dobot_logic import run_pick_and_place as _rpp  # noqa: F401 (import proves the module wires up)
 
@@ -141,7 +141,8 @@ def main():
 
     # ---- Step 3 & 4: vision + whatsapp, looping until complete ----
     banner("STEP 3/4 — perception_node checks the table, whatsapp_node reports gaps")
-    notifier = RateLimitedNotifier(FakeWhatsAppNotifier(), min_interval=0)
+    secrets_path = os.path.join(HERE, "config", "secrets.yaml")
+    notifier = build_notifier(secrets_path, min_interval=0)
 
     # Simulate items "appearing" on the table one at a time across a few
     # checks, the way they would as you actually place objects tomorrow.
