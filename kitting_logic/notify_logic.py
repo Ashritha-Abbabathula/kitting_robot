@@ -24,6 +24,14 @@ def format_missing_message(mode: str, missing: List[str]) -> str:
     return f"[{mode}] Still missing: {items}"
 
 
+def format_completion_message(mode: str) -> str:
+    """One-line message for the single 'everything's here, running now' email —
+    not tied to any specific mode number, just formats whatever mode string
+    comes in (e.g. 'mode_1' -> 'Mode 1')."""
+    label = mode.replace("_", " ").strip().title()
+    return f"Got all components for {label} — executing now."
+
+
 class EmailNotifier:
     """
     Sends a real email via SMTP. Works with Gmail out of the box (using
@@ -66,21 +74,25 @@ class FakeEmailNotifier:
 
 class RateLimitedNotifier:
     """
-    Wraps any notifier (real or fake) and only actually sends when the
-    message content has changed, or `min_interval` seconds have passed —
-    so you don't get an email every camera frame while items are missing.
+    Wraps any notifier (real or fake) and enforces a hard minimum gap of
+    `min_interval` seconds between sends — no matter how often the message
+    content changes in between. The very first call always sends (there's
+    nothing to wait on yet); every call after that is blocked until
+    `min_interval` seconds have actually passed since the last real send.
+    This is what stops emails from firing back-to-back on every camera
+    frame while items are missing.
     """
 
-    def __init__(self, notifier, min_interval: float = 8.0):
+    def __init__(self, notifier, min_interval: float = 10.0):
         self._notifier = notifier
         self._min_interval = min_interval
         self._last_body: Optional[str] = None
-        self._last_sent_at: float = 0.0
+        self._last_sent_at: Optional[float] = None
 
     def maybe_send(self, body: str, now: float) -> bool:
-        changed = body != self._last_body
-        stale = (now - self._last_sent_at) >= self._min_interval
-        if changed or stale:
+        first_ever = self._last_sent_at is None
+        long_enough = (not first_ever) and (now - self._last_sent_at) >= self._min_interval
+        if first_ever or long_enough:
             self._notifier.send(body)
             self._last_body = body
             self._last_sent_at = now
@@ -88,7 +100,7 @@ class RateLimitedNotifier:
         return False
 
 
-def build_notifier(secrets_path: str, min_interval: float = 8.0):
+def build_notifier(secrets_path: str, min_interval: float = 10.0):
     """
     Shared by notify_node.py and demo_integration.py, so both behave the
     same way: if config/secrets.yaml exists with real email details, use

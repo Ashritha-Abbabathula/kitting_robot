@@ -1,5 +1,16 @@
 # Vision-Verified Kitting & Sorting Robot
 
+A robot scans a QR code to pick a task mode, checks with computer vision that
+the right items are physically present, emails an alert for anything missing,
+and then runs the pick-and-place with a Dobot Magician once the kit is
+complete.
+
+See [`docs/Dobot_Kitting_Sorting_Robot_Presentation.pdf`](docs/Dobot_Kitting_Sorting_Robot_Presentation.pdf)
+for the original project proposal (problem statement, architecture, timeline,
+team). Note the proposal specs WhatsApp/Twilio for notifications — the build
+below uses plain email instead (see "What's already done"), since it needs no
+Twilio account, sandbox, or phone verification.
+
 ## What's already done (built and tested tonight, no ROS or hardware needed)
 
 Everything under `kitting_logic/` is plain Python — no ROS, no Dobot, no
@@ -59,6 +70,10 @@ QR codes at a reasonable size (a few cm across) with a plain white margin
 around them — a QR code with no white border around it, or a screenshot
 cropped too tightly, is much harder for either decoder to read.
 
+Ready-made test codes are included: [`MODE_1.png`](MODE_1.png) and
+[`MODE_2.png`](MODE_2.png) encode `MODE_1`/`MODE_2` directly — print or
+display either one to trigger that mode without generating your own.
+
 ## Getting this onto the lab machine
 
 Easiest: push this to a GitHub repo tonight, then on the lab machine:
@@ -84,4 +99,15 @@ kitting_robot/
   tools/color_picker.py   <- click-to-get-HSV-range helper for tuning item colours
   test/test_logic.py      <- run tonight, no ROS needed
   demo_integration.py     <- run the whole pipeline end-to-end right now, no ROS needed
+  MODE_1.png, MODE_2.png  <- printable QR codes for testing mode switching
+  docs/                   <- original project proposal (PDF)
 ```
+
+## Keeping secrets out of git
+
+`config/secrets.yaml` holds your real Gmail address and app password — it's
+listed in `.gitignore` and must never be committed. Only
+`config/secrets.example.yaml` (a template with placeholder values) is
+tracked. If you ever regenerate the Gmail app password in `secrets.yaml`
+(e.g. because it was accidentally shared), revoke the old one at
+[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).

@@ -11,7 +11,7 @@ modes:
     - blue_block
   mode_2:
     - red_block
-    - screw_pack
+    - matchbox
 
 # min_area is in pixels — how big the colour blob must be to count as
 # "found". Raise it if the background triggers false positives; lower it
@@ -25,7 +25,7 @@ item_colors:
     hsv_low: [100, 120, 70]
     hsv_high: [130, 255, 255]
     min_area: 800
-  screw_pack:
-    hsv_low: [20, 100, 100]
-    hsv_high: [35, 255, 255]
-    min_area: 500
+  matchbox:
+    hsv_low: [15, 120, 120]
+    hsv_high: [30, 255, 255]
+    min_area: 700

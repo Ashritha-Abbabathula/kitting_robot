@@ -12,7 +12,7 @@ home: {x: 200, y: 0, z: 50, r: 0}
 bins:
   red_block:   {x: 150, y: 150, z: 0, r: 0}
   blue_block:  {x: 150, y: -150, z: 0, r: 0}
-  screw_pack:  {x: 200, y: 150, z: 0, r: 0}
+  matchbox:  {x: 200, y: 150, z: 0, r: 0}
 
 pickup:
   # If every item is picked up from the same fixed spot (e.g. off the

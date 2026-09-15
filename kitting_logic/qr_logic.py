@@ -14,7 +14,7 @@ import numpy as np
 try:
     from pyzbar.pyzbar import decode as _zbar_decode
     HAVE_PYZBAR = True
-except ImportError:
+except (ImportError, FileNotFoundError, OSError):
     # pyzbar needs the system 'libzbar0' library as well as the pip package.
     # If it's missing, fall back to OpenCV's built-in QR detector so you can
     # still test tonight — but install pyzbar for tomorrow, it's more robust.
