@@ -15,9 +15,9 @@ Two ways to run it:
     python3 demo_integration.py --webcam   # REAL webcam for both the QR code AND item checking
 
 In --webcam mode, nothing is simulated except the arm: the QR code is
-read from actual camera frames, and item presence is decided by actually
-looking at the camera feed against config/checklists.yaml's colour
-ranges. There is no timeout and no fallback — it displays "No QR code"
+read from actual camera frames, and item presence is decided by running
+a YOLOv8 model (config/checklists.yaml's item_classes) against the camera
+feed. There is no timeout and no fallback — it displays "No QR code"
 and does nothing until a real one is shown, then "No objects are seen"
 and does nothing until real items actually appear on camera. Exactly one
 email goes out for the whole run, the moment everything's present.
@@ -38,7 +38,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from kitting_logic.qr_logic import decode_qr, normalize_mode
 from kitting_logic.checklist_logic import load_checklists, get_required_items
-from kitting_logic.vision_logic import find_missing_items
+from kitting_logic.vision_logic import find_missing_items, get_detector, YoloNotConfigured
 from kitting_logic.notify_logic import format_missing_message, format_completion_message, build_notifier
 from kitting_logic.dobot_logic import SimulatedDobot, run_pick_and_place
 from kitting_logic.dobot_logic import run_pick_and_place as _rpp  # noqa: F401 (import proves the module wires up)
@@ -65,6 +65,24 @@ def make_colored_frame(h, w, bgr):
     frame = np.zeros((h, w, 3), dtype=np.uint8)
     frame[:, :] = bgr
     return frame
+
+
+class _ScriptedDetector:
+    """
+    Stands in for a real YOLOv8 model in the no-camera demo. A trained
+    detector needs an actual photo of an actual item to say anything useful
+    — a solid-colour rectangle won't do — so instead this just reports
+    whatever items `currently_present` says are on the table, each with
+    confidence 1.0. That's enough to walk through the same
+    find_missing_items() logic the real webcam/ROS path uses, without
+    needing a camera, real items, or a trained model.
+    """
+
+    def __init__(self):
+        self.currently_present = []
+
+    def detect(self, frame):
+        return {name: 1.0 for name in self.currently_present}
 
 
 def _mode_display_text(mode):
@@ -113,10 +131,10 @@ def get_qr_from_webcam(cap):
             return None
 
 
-def check_items_from_webcam(cap, mode, required_items, item_colors, notifier):
+def check_items_from_webcam(cap, mode, required_items, item_classes, detector, notifier):
     """
     Reads REAL frames from an already-open camera and repeatedly checks
-    them against config/checklists.yaml's colour ranges via the same
+    them against config/checklists.yaml's YOLO classes via the same
     find_missing_items() used elsewhere in the project — nothing here is
     simulated or pre-decided, and there's no timeout: it waits as long as
     it takes for the real items to actually appear. Exactly ONE email goes
@@ -135,7 +153,7 @@ def check_items_from_webcam(cap, mode, required_items, item_colors, notifier):
         if not ok:
             continue
 
-        missing = find_missing_items(frame, required_items, item_colors)
+        missing = find_missing_items(detector, frame, required_items, item_classes)
         present = [item for item in required_items if item not in missing]
 
         if not present:
@@ -208,7 +226,8 @@ def main():
 
     checklists = load_checklists(CHECKLIST_PATH)
     with open(CHECKLIST_PATH) as f:
-        item_colors = (yaml.safe_load(f) or {}).get("item_colors", {})
+        config = yaml.safe_load(f) or {}
+    item_classes = config.get("item_classes", {})
     with open(COORDS_PATH) as f:
         coords = yaml.safe_load(f)
 
@@ -217,6 +236,13 @@ def main():
 
     if args.webcam:
         # ---- Fully real path: real QR, real item checking, nothing pretended ----
+        weights_path = os.path.join(HERE, config.get("yolo", {}).get("weights", "models/best.pt"))
+        try:
+            detector = get_detector(weights_path)
+        except YoloNotConfigured as e:
+            print(f"ERROR: {e}")
+            sys.exit(1)
+
         cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
         if not cap.isOpened():
             print(f"ERROR: could not open camera index {CAMERA_INDEX}. Exiting.")
@@ -244,7 +270,7 @@ def main():
             print(f"  -> required items for {mode}: {required_items}")
 
             banner("STEP 3/4 — perception_node checks the REAL camera feed, notify_node reports gaps")
-            complete = check_items_from_webcam(cap, mode, required_items, item_colors, notifier)
+            complete = check_items_from_webcam(cap, mode, required_items, item_classes, detector, notifier)
         finally:
             cap.release()
             cv2.destroyAllWindows()
@@ -268,22 +294,17 @@ def main():
 
         banner("STEP 3/4 — perception_node checks the table (synthetic), notify_node reports gaps")
         complete = False
+        detector = _ScriptedDetector()
+        frame = make_colored_frame(200, 400, (40, 40, 40))  # ignored by _ScriptedDetector — just a
+        # placeholder frame, since a real YOLO model needs an actual photo of an actual item, not a
+        # solid-colour rectangle, to detect anything.
         for round_num in range(len(required_items) + 1):
             present_so_far = required_items[:round_num]
             print(f"\n  -- check #{round_num + 1}: pretend these are currently on the table: "
                   f"{present_so_far or '(nothing yet)'}")
 
-            frame = make_colored_frame(200, 400, (40, 40, 40))
-            for i, item in enumerate(present_so_far):
-                cfg = item_colors.get(item)
-                if cfg:
-                    hue = cfg["hsv_low"][0]
-                    hsv_patch = np.uint8([[[hue, 200, 200]]])
-                    bgr = cv2.cvtColor(hsv_patch, cv2.COLOR_HSV2BGR)[0][0]
-                    x0 = i * 150
-                    frame[50:150, x0:x0 + 100] = bgr
-
-            missing = find_missing_items(frame, required_items, item_colors)
+            detector.currently_present = present_so_far
+            missing = find_missing_items(detector, frame, required_items, item_classes)
             print(f"     -> [would publish to /missing_items]: {json.dumps(missing)}")
             complete = len(missing) == 0
             if complete:

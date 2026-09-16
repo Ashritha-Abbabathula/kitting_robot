@@ -5,3 +5,9 @@ __pycache__/
 build/
 devel/
 .vscode/
+
+# Trained YOLO weights and captured training photos are build artifacts,
+# not source — train your own per kitting_logic/vision_logic.py's steps.
+models/
+training_images/
+runs/

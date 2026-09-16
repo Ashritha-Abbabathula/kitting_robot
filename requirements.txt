@@ -4,3 +4,4 @@ PyYAML
 pyzbar
 pydobot
 pytest
+ultralytics

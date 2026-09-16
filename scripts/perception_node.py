@@ -27,7 +27,7 @@ from std_msgs.msg import String, Bool
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from kitting_logic.qr_logic import decode_qr, normalize_mode
 from kitting_logic.checklist_logic import load_checklists, get_required_items
-from kitting_logic.vision_logic import find_missing_items
+from kitting_logic.vision_logic import find_missing_items, get_detector, YoloNotConfigured
 
 
 def main():
@@ -43,7 +43,17 @@ def main():
     checklists = load_checklists(config_path)
     import yaml
     with open(config_path) as f:
-        item_colors = (yaml.safe_load(f) or {}).get("item_colors", {})
+        config = yaml.safe_load(f) or {}
+    item_classes = config.get("item_classes", {})
+
+    weights_path = os.path.join(
+        os.path.dirname(config_path), "..", config.get("yolo", {}).get("weights", "models/best.pt")
+    )
+    try:
+        detector = get_detector(weights_path)
+    except YoloNotConfigured as e:
+        rospy.logerr(f"perception_node: {e}")
+        return
 
     mode_pub = rospy.Publisher("/task_mode", String, queue_size=1, latch=True)
     required_pub = rospy.Publisher("/required_items", String, queue_size=1, latch=True)
@@ -82,7 +92,7 @@ def main():
             complete_pub.publish(Bool(data=False))
 
         if current_mode is not None:
-            missing = find_missing_items(frame, required_items, item_colors)
+            missing = find_missing_items(detector, frame, required_items, item_classes)
             missing_pub.publish(String(data=json.dumps(missing)))
             complete_pub.publish(Bool(data=(len(missing) == 0)))
 

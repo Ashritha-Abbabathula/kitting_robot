@@ -1,9 +1,11 @@
 # Which items are required for each QR mode, and how to recognize each
-# item by colour. Fill in real values tonight against your actual objects.
+# item with YOLOv8. Fill in real values against your actual objects.
 #
-# HOW TO GET hsv_low / hsv_high FOR YOUR OBJECTS:
-#   Run tools/color_picker.py, point your webcam at the object, and click
-#   on it. It prints an HSV range you can paste in directly below.
+# HOW TO GET A WORKING MODEL:
+#   Run tools/capture_training_images.py to collect photos of each item,
+#   label them (Roboflow or LabelImg) using the SAME class names as
+#   item_classes below, then train — see the comment at the top of
+#   kitting_logic/vision_logic.py for the exact steps.
 
 modes:
   mode_1:
@@ -13,19 +15,21 @@ modes:
     - red_block
     - matchbox
 
-# min_area is in pixels — how big the colour blob must be to count as
-# "found". Raise it if the background triggers false positives; lower it
-# if a real item far from the camera isn't being detected.
-item_colors:
+yolo:
+  # Path is relative to the project root. Not committed to git (it's a
+  # trained artifact, not source) — train your own and drop it here.
+  weights: models/best.pt
+
+# confidence is how sure the model must be (0.0-1.0) to count an item as
+# "found". Lower it if a real item isn't being detected; raise it if the
+# model is confidently wrong about something else being this item.
+item_classes:
   red_block:
-    hsv_low: [0, 120, 70]
-    hsv_high: [10, 255, 255]
-    min_area: 800
+    class_name: red_block
+    confidence: 0.5
   blue_block:
-    hsv_low: [100, 120, 70]
-    hsv_high: [130, 255, 255]
-    min_area: 800
+    class_name: blue_block
+    confidence: 0.5
   matchbox:
-    hsv_low: [15, 120, 120]
-    hsv_high: [30, 255, 255]
-    min_area: 700
+    class_name: matchbox
+    confidence: 0.5

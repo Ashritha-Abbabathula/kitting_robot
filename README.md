@@ -15,11 +15,12 @@ Twilio account, sandbox, or phone verification.
 
 Everything under `kitting_logic/` is plain Python — no ROS, no Dobot, no
 lab camera required. It's tested: run `python3 test/test_logic.py` and you
-should see 8/8 passed. This is the actual brains of the project:
+should see 10/10 passed. This is the actual brains of the project:
 
 - `qr_logic.py` — reads a QR code from a camera frame
 - `checklist_logic.py` — looks up what's required for a given mode
-- `vision_logic.py` — checks whether an item's colour is visible in a frame
+- `vision_logic.py` — checks whether an item is visible in a frame, using a
+  YOLOv8 object detector (see "Training the YOLOv8 model" below)
 - `notify_logic.py` — sends (or fakes sending) an email alert when items are missing
 - `dobot_logic.py` — moves the arm, with a **simulated** version that just
   logs what it would do, so you can run the whole thing without the arm
@@ -33,13 +34,15 @@ or phone verification needed. Just your own email address and a Gmail
 1. Get this onto the lab's Ubuntu machine (or your own laptop if it runs
    Ubuntu) — see "Getting this onto the lab machine" below.
 2. Install ROS 1 Noetic if it isn't already there.
-3. `pip install -r requirements.txt` on that machine too.
+3. `pip install -r requirements.txt` on that machine too (this now
+   includes `ultralytics`, which pulls in PyTorch — a much bigger install
+   than before, budget a few extra minutes).
 4. Jog the real arm to find your actual coordinates, and put them in
    `config/coordinates.yaml` (it currently has placeholder numbers).
-5. Point `tools/color_picker.py` at your actual sorting items under the
-   lab's actual lighting, and update `config/checklists.yaml` with the
-   real HSV ranges (do this even if you tuned them tonight at home —
-   lighting changes the numbers).
+5. Train a YOLOv8 model on your actual sorting items under the lab's
+   actual lighting — see "Training the YOLOv8 model" below (do this even
+   if you trained one tonight at home — lighting changes what the model
+   needs to see).
 6. Copy `config/secrets.example.yaml` to `config/secrets.yaml` and fill in
    your real email + app password (see comments in that file).
 7. Run it:
@@ -55,10 +58,44 @@ same launch file, one flag.
 
 ```
 pip install -r requirements.txt
-python3 test/test_logic.py                 # confirm everything passes
-python3 demo_integration.py --webcam       # watch the whole pipeline run, end to end
-python3 tools/color_picker.py              # click on your objects to get HSV ranges
+python3 test/test_logic.py                 # confirm everything passes (no model needed)
+python3 demo_integration.py                # walk the pipeline with no camera or model needed
+python3 demo_integration.py --webcam       # real webcam + real YOLO model, end to end
 ```
+
+`demo_integration.py --webcam` and the ROS `perception_node` both need a
+trained model at `config/checklists.yaml`'s `yolo.weights` path (default
+`models/best.pt`) — see "Training the YOLOv8 model" below. Without one,
+they fail immediately with a clear error rather than silently detecting
+nothing. `test/test_logic.py` and the no-camera `demo_integration.py`
+don't need a model at all — they use a fake detector.
+
+## Training the YOLOv8 model
+
+The color-blob approach (matching a fixed HSV range) was swapped for a
+real YOLOv8 object detector, since colour matching broke down under
+lighting changes and couldn't tell two same-coloured items apart. You
+need to train one on your own items — it only takes a few minutes:
+
+1. Capture photos of each item: `python3 tools/capture_training_images.py
+   red_block blue_block matchbox` — press SPACE to save a frame, `n` for
+   the next item, `q` when done. Move the item around a bit between shots
+   (angle, position, background) — 30-50 varied photos per item is enough.
+   Saves to `training_images/<item_name>/`.
+2. Label them with a free tool — [Roboflow](https://roboflow.com)'s web UI
+   or [LabelImg](https://github.com/heartexlab/labelImg) both work — using
+   the **same class names** as `config/checklists.yaml`'s `item_classes`
+   (e.g. `red_block`). Export in YOLOv8 format; this gives you a
+   `data.yaml` plus labelled image folders.
+3. Train: `yolo detect train data=data.yaml model=yolov8n.pt epochs=50 imgsz=640`
+   — ultralytics prints the resulting weights path when done, usually
+   `runs/detect/train/weights/best.pt`.
+4. Copy that file to `models/best.pt` (or wherever `config/checklists.yaml`'s
+   `yolo.weights` points).
+
+Neither the trained weights nor the captured photos are committed to git
+(see `.gitignore`) — they're per-lab, per-lighting build artifacts, not
+source.
 
 If `pyzbar` fails to install (it needs a system library called `libzbar`
 that pip can't install by itself on Linux — Windows usually just works),
@@ -94,10 +131,12 @@ source devel/setup.bash
 kitting_robot/
   kitting_logic/        <- pure Python, no ROS — the actual logic, tested tonight
   scripts/               <- thin ROS node wrappers around kitting_logic/
-  config/                <- checklists, coordinates, email secrets (fill in for real)
+  config/                <- checklists, coordinates, YOLO/email config (fill in for real)
   launch/kitting.launch   <- starts all three nodes together
-  tools/color_picker.py   <- click-to-get-HSV-range helper for tuning item colours
-  test/test_logic.py      <- run tonight, no ROS needed
+  tools/capture_training_images.py  <- webcam capture helper for YOLO training photos
+  models/                 <- trained YOLO weights go here (gitignored — train your own)
+  training_images/        <- captured training photos go here (gitignored)
+  test/test_logic.py      <- run tonight, no ROS or model needed
   demo_integration.py     <- run the whole pipeline end-to-end right now, no ROS needed
   MODE_1.png, MODE_2.png  <- printable QR codes for testing mode switching
   docs/                   <- original project proposal (PDF)
