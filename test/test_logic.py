@@ -75,11 +75,11 @@ def test_find_missing_items():
 
 def test_find_missing_items_respects_per_item_confidence():
     # Detected, but below this item's required confidence.
-    detector = FakeDetector({"matchbox": 0.4})
-    item_classes = {"matchbox": {"class_name": "matchbox", "confidence": 0.6}}
-    missing = find_missing_items(detector, frame=None, required_items=["matchbox"],
+    detector = FakeDetector({"sharpener": 0.4})
+    item_classes = {"sharpener": {"class_name": "sharpener", "confidence": 0.6}}
+    missing = find_missing_items(detector, frame=None, required_items=["sharpener"],
                                   item_classes=item_classes)
-    assert missing == ["matchbox"]
+    assert missing == ["sharpener"]
 
 
 def test_format_missing_message():

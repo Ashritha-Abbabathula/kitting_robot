@@ -76,49 +76,61 @@ The color-blob approach (matching a fixed HSV range) was swapped for a
 real YOLOv8 object detector, since colour matching broke down under
 lighting changes and couldn't tell two same-coloured items apart.
 
-**red_block and blue_block**: a public dataset already covers this —
-[colored-blocks](https://universe.roboflow.com/autonomous-object-picking-robot/colored-blocks)
-(CC BY 4.0, 513 images, classes `red`/`green`/`blue`, 98.9% mAP@50). That's
-why `config/checklists.yaml` points `red_block`/`blue_block` at classes
-`red`/`blue` — matching its own class names means you don't have to
-relabel its images. **matchbox** has no public dataset — capture and label
-that one yourself. Recommended path, since a single model needs one
-consistent set of classes:
+All three items are covered by public datasets now, so no self-captured
+photos are strictly required — though `tools/capture_training_images.py`
+is still there if your actual objects don't resemble either dataset
+closely enough and you need to add real photos on top:
+
+- **red_block / blue_block**:
+  [colored-blocks](https://universe.roboflow.com/autonomous-object-picking-robot/colored-blocks)
+  (CC BY 4.0, 513 images, classes `red`/`green`/`blue`, 98.9% mAP@50).
+- **sharpener**:
+  [Stationary Dataset](https://www.kaggle.com/datasets/abdullahsami10/stationary-dataset)
+  (CC BY 4.0, pre-split train/valid/test, classes `Pencil`/`Eraser`/`Sharpener`/`Ruler`).
+
+That's why `config/checklists.yaml` points `red_block`/`blue_block`/`sharpener`
+at classes `red`/`blue`/`Sharpener` — each dataset's own class names, so you
+don't have to relabel their images. A single model needs one consistent
+set of classes though, so the two sources need merging into one dataset:
 
 1. On Roboflow, open the [colored-blocks
    dataset](https://universe.roboflow.com/autonomous-object-picking-robot/colored-blocks)
    and click **Fork Dataset** into your own (free) workspace — this copies
    its 513 labelled red/green/blue images into a project you can edit.
-2. Capture matchbox photos: `python3 tools/capture_training_images.py
-   matchbox` — press SPACE to save a frame, `q` when done. Move the item
-   around a bit between shots (angle, position, background) — 30-50
-   varied photos is enough. Saves to `training_images/matchbox/`.
-3. Upload those photos into the same forked Roboflow project and label
-   them `matchbox` (Roboflow's web UI). You can drop the `green` class
-   here too, since nothing in this project needs it.
+2. Download the [Stationary
+   Dataset](https://www.kaggle.com/datasets/abdullahsami10/stationary-dataset)
+   from Kaggle (Download button, or `kaggle datasets download -d
+   abdullahsami10/stationary-dataset` with the Kaggle CLI) and unzip it —
+   it's already in YOLO format with `images/`/`labels/` folders.
+3. In that same forked Roboflow project, use **Upload Dataset** to import
+   the Kaggle images + YOLO labels — Roboflow matches classes by name, so
+   this adds `Pencil`/`Eraser`/`Sharpener`/`Ruler` alongside the existing
+   `red`/`green`/`blue`. The extra classes you don't need (green, pencil,
+   eraser, ruler) are harmless to leave in — the project's `item_classes`
+   just never references them.
 4. Generate a new dataset version and export it in **YOLOv8** format —
-   this gives you a `data.yaml` plus labelled image folders covering all
-   3 classes (`red`, `blue`, `matchbox`) in one consistent set.
+   this gives you one `data.yaml` plus labelled image folders covering
+   every class from both sources.
 5. Train: `yolo detect train data=data.yaml model=yolov8n.pt epochs=50 imgsz=640`
    — ultralytics prints the resulting weights path when done, usually
    `runs/detect/train/weights/best.pt`.
 6. Copy that file to `models/best.pt` (or wherever `config/checklists.yaml`'s
-   `yolo.weights` points).
+   `yolo.weights` points). Double-check the exact class name casing in the
+   exported `data.yaml` matches `item_classes` in `config/checklists.yaml`
+   — YOLO class names are case-sensitive.
 
-If you'd rather skip the public dataset and capture/label everything
-yourself instead (e.g. your actual blocks look nothing like the ones in
-that dataset), do the same thing but run
-`tools/capture_training_images.py red_block blue_block matchbox` in step 2
-and use `red_block`/`blue_block`/`matchbox` as the class names — just
-update `item_classes` in `config/checklists.yaml` to match (`class_name:
-red_block` etc.) since you won't be constrained by the public dataset's
-naming anymore.
+If your actual objects don't look enough like either dataset (different
+block colour/shape, different sharpener), capture and label your own
+photos instead — run `tools/capture_training_images.py red_block
+blue_block sharpener`, add them to the same Roboflow project under your
+own class names, and point `item_classes` at those instead.
 
-CC BY 4.0 requires attribution if you use the colored-blocks dataset —
+Both datasets are CC BY 4.0 — attribution is required if you use them.
 Roboflow's project page has a ready-made citation under "Cite This
-Project"; worth including in your final report/slides.
+Project"; the Kaggle page has an equivalent under its metadata section.
+Include both in your final report/slides.
 
-Neither the trained weights nor the captured/downloaded photos are
+Neither the trained weights nor any captured/downloaded photos are
 committed to git (see `.gitignore`) — they're per-lab, per-lighting build
 artifacts, not source.
 

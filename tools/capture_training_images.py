@@ -10,7 +10,7 @@ demo. Aim for the same class names you'll use in config/checklists.yaml's
 item_classes (e.g. "red_block").
 
 Usage:
-    python3 tools/capture_training_images.py red_block blue_block matchbox [camera_index]
+    python3 tools/capture_training_images.py red_block blue_block sharpener [camera_index]
 
 Controls:
     SPACE       save the current frame for the active item

@@ -7,11 +7,13 @@
 #   item_classes below, then train — see the comment at the top of
 #   kitting_logic/vision_logic.py for the exact steps.
 #
-#   red_block/blue_block can start from a public dataset instead of
-#   capturing your own: universe.roboflow.com/autonomous-object-picking-robot/colored-blocks
-#   (CC BY 4.0, classes: red/green/blue — drop "green", cite it if you use
-#   it). matchbox has no public dataset — capture and label that one
-#   yourself. See the README's "Training the YOLOv8 model" section.
+#   Both classes below can start from public datasets instead of capturing
+#   your own — see the README's "Training the YOLOv8 model" section:
+#     red_block/blue_block: universe.roboflow.com/autonomous-object-picking-robot/colored-blocks
+#       (CC BY 4.0, classes red/green/blue — drop "green")
+#     sharpener: kaggle.com/datasets/abdullahsami10/stationary-dataset
+#       (CC BY 4.0, classes Pencil/Eraser/Sharpener/Ruler — only Sharpener needed)
+#   Cite both if you use them (see README).
 
 modes:
   mode_1:
@@ -19,7 +21,7 @@ modes:
     - blue_block
   mode_2:
     - red_block
-    - matchbox
+    - sharpener
 
 yolo:
   # Path is relative to the project root. Not committed to git (it's a
@@ -40,6 +42,9 @@ item_classes:
   blue_block:
     class_name: blue
     confidence: 0.5
-  matchbox:
-    class_name: matchbox
+  # "Sharpener" is the Kaggle stationery dataset's own class name (check
+  # the exact casing in its data.yaml after downloading — YOLO class
+  # names are case-sensitive — and fix this if it differs).
+  sharpener:
+    class_name: Sharpener
     confidence: 0.5
