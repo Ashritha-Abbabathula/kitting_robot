@@ -10,11 +10,15 @@ coloured items apart.
 
 To get a working model:
     1. Take ~30-50 photos of each item, varying angle/background/lighting
-       a bit (tools/capture_training_images.py does this for you).
-    2. Label them with a free tool (Roboflow's web UI or LabelImg), using
-       the SAME class names as `item_classes` in config/checklists.yaml
-       (e.g. "red_block"). Export in YOLOv8 format — this gives you a
-       data.yaml plus labelled image folders.
+       a bit (tools/capture_training_images.py does this for you). Or
+       start from a public dataset instead — see the README's "Training
+       the YOLOv8 model" section for a red/blue blocks dataset that
+       already fits this project.
+    2. Label them with a free tool (Roboflow's web UI or LabelImg). Class
+       names don't have to match the item names above — item_classes in
+       config/checklists.yaml maps each item to whatever the model calls
+       it (e.g. item "red_block" -> class "red"). Export in YOLOv8 format
+       — this gives you a data.yaml plus labelled image folders.
     3. Train:
            yolo detect train data=data.yaml model=yolov8n.pt epochs=50 imgsz=640
        A few dozen images per class and 50 epochs is enough for a fixed

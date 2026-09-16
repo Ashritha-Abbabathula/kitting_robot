@@ -6,6 +6,12 @@
 #   label them (Roboflow or LabelImg) using the SAME class names as
 #   item_classes below, then train — see the comment at the top of
 #   kitting_logic/vision_logic.py for the exact steps.
+#
+#   red_block/blue_block can start from a public dataset instead of
+#   capturing your own: universe.roboflow.com/autonomous-object-picking-robot/colored-blocks
+#   (CC BY 4.0, classes: red/green/blue — drop "green", cite it if you use
+#   it). matchbox has no public dataset — capture and label that one
+#   yourself. See the README's "Training the YOLOv8 model" section.
 
 modes:
   mode_1:
@@ -24,11 +30,15 @@ yolo:
 # "found". Lower it if a real item isn't being detected; raise it if the
 # model is confidently wrong about something else being this item.
 item_classes:
+  # class_name is whatever the model's own class is called — it doesn't
+  # have to match the item name on the left. red_block/blue_block point at
+  # "red"/"blue" (the public colored-blocks dataset's own class names, see
+  # above) so you don't have to relabel its 513 images just to rename them.
   red_block:
-    class_name: red_block
+    class_name: red
     confidence: 0.5
   blue_block:
-    class_name: blue_block
+    class_name: blue
     confidence: 0.5
   matchbox:
     class_name: matchbox

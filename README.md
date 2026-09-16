@@ -74,28 +74,53 @@ don't need a model at all — they use a fake detector.
 
 The color-blob approach (matching a fixed HSV range) was swapped for a
 real YOLOv8 object detector, since colour matching broke down under
-lighting changes and couldn't tell two same-coloured items apart. You
-need to train one on your own items — it only takes a few minutes:
+lighting changes and couldn't tell two same-coloured items apart.
 
-1. Capture photos of each item: `python3 tools/capture_training_images.py
-   red_block blue_block matchbox` — press SPACE to save a frame, `n` for
-   the next item, `q` when done. Move the item around a bit between shots
-   (angle, position, background) — 30-50 varied photos per item is enough.
-   Saves to `training_images/<item_name>/`.
-2. Label them with a free tool — [Roboflow](https://roboflow.com)'s web UI
-   or [LabelImg](https://github.com/heartexlab/labelImg) both work — using
-   the **same class names** as `config/checklists.yaml`'s `item_classes`
-   (e.g. `red_block`). Export in YOLOv8 format; this gives you a
-   `data.yaml` plus labelled image folders.
-3. Train: `yolo detect train data=data.yaml model=yolov8n.pt epochs=50 imgsz=640`
+**red_block and blue_block**: a public dataset already covers this —
+[colored-blocks](https://universe.roboflow.com/autonomous-object-picking-robot/colored-blocks)
+(CC BY 4.0, 513 images, classes `red`/`green`/`blue`, 98.9% mAP@50). That's
+why `config/checklists.yaml` points `red_block`/`blue_block` at classes
+`red`/`blue` — matching its own class names means you don't have to
+relabel its images. **matchbox** has no public dataset — capture and label
+that one yourself. Recommended path, since a single model needs one
+consistent set of classes:
+
+1. On Roboflow, open the [colored-blocks
+   dataset](https://universe.roboflow.com/autonomous-object-picking-robot/colored-blocks)
+   and click **Fork Dataset** into your own (free) workspace — this copies
+   its 513 labelled red/green/blue images into a project you can edit.
+2. Capture matchbox photos: `python3 tools/capture_training_images.py
+   matchbox` — press SPACE to save a frame, `q` when done. Move the item
+   around a bit between shots (angle, position, background) — 30-50
+   varied photos is enough. Saves to `training_images/matchbox/`.
+3. Upload those photos into the same forked Roboflow project and label
+   them `matchbox` (Roboflow's web UI). You can drop the `green` class
+   here too, since nothing in this project needs it.
+4. Generate a new dataset version and export it in **YOLOv8** format —
+   this gives you a `data.yaml` plus labelled image folders covering all
+   3 classes (`red`, `blue`, `matchbox`) in one consistent set.
+5. Train: `yolo detect train data=data.yaml model=yolov8n.pt epochs=50 imgsz=640`
    — ultralytics prints the resulting weights path when done, usually
    `runs/detect/train/weights/best.pt`.
-4. Copy that file to `models/best.pt` (or wherever `config/checklists.yaml`'s
+6. Copy that file to `models/best.pt` (or wherever `config/checklists.yaml`'s
    `yolo.weights` points).
 
-Neither the trained weights nor the captured photos are committed to git
-(see `.gitignore`) — they're per-lab, per-lighting build artifacts, not
-source.
+If you'd rather skip the public dataset and capture/label everything
+yourself instead (e.g. your actual blocks look nothing like the ones in
+that dataset), do the same thing but run
+`tools/capture_training_images.py red_block blue_block matchbox` in step 2
+and use `red_block`/`blue_block`/`matchbox` as the class names — just
+update `item_classes` in `config/checklists.yaml` to match (`class_name:
+red_block` etc.) since you won't be constrained by the public dataset's
+naming anymore.
+
+CC BY 4.0 requires attribution if you use the colored-blocks dataset —
+Roboflow's project page has a ready-made citation under "Cite This
+Project"; worth including in your final report/slides.
+
+Neither the trained weights nor the captured/downloaded photos are
+committed to git (see `.gitignore`) — they're per-lab, per-lighting build
+artifacts, not source.
 
 If `pyzbar` fails to install (it needs a system library called `libzbar`
 that pip can't install by itself on Linux — Windows usually just works),
