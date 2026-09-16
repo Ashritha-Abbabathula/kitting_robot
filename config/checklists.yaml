@@ -28,6 +28,14 @@ yolo:
   # trained artifact, not source) — train your own and drop it here.
   weights: models/best.pt
 
+roboflow:
+  # Optional: a hosted Roboflow model, called over the network instead of
+  # (or alongside) the local model above — see
+  # kitting_logic/vision_logic.py's build_detector(). Needs an API key in
+  # config/secrets.yaml's roboflow.api_key (see config/secrets.example.yaml).
+  # Leave unset to use only the local model.
+  model_id: colored-blocks/2
+
 # confidence is how sure the model must be (0.0-1.0) to count an item as
 # "found". Lower it if a real item isn't being detected; raise it if the
 # model is confidently wrong about something else being this item.

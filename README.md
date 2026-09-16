@@ -63,76 +63,85 @@ python3 demo_integration.py                # walk the pipeline with no camera or
 python3 demo_integration.py --webcam       # real webcam + real YOLO model, end to end
 ```
 
-`demo_integration.py --webcam` and the ROS `perception_node` both need a
-trained model at `config/checklists.yaml`'s `yolo.weights` path (default
-`models/best.pt`) — see "Training the YOLOv8 model" below. Without one,
-they fail immediately with a clear error rather than silently detecting
-nothing. `test/test_logic.py` and the no-camera `demo_integration.py`
-don't need a model at all — they use a fake detector.
+`demo_integration.py --webcam` and the ROS `perception_node` both build
+their detector via `build_detector()` (see
+`kitting_logic/vision_logic.py`), which needs *at least one* of the two
+backends below configured. Without either, it fails immediately with a
+clear error rather than silently detecting nothing. `test/test_logic.py`
+and the no-camera `demo_integration.py` don't need either — they use a
+fake detector.
 
 ## Training the YOLOv8 model
 
 The color-blob approach (matching a fixed HSV range) was swapped for a
-real YOLOv8 object detector, since colour matching broke down under
-lighting changes and couldn't tell two same-coloured items apart.
+real object detector, since colour matching broke down under lighting
+changes and couldn't tell two same-coloured items apart. There are two
+detector backends, and `build_detector()` combines whichever you set up
+(`CompositeDetector`) — different items can come from different backends:
 
-All three items are covered by public datasets now, so no self-captured
-photos are strictly required — though `tools/capture_training_images.py`
-is still there if your actual objects don't resemble either dataset
-closely enough and you need to add real photos on top:
+**red_block / blue_block — hosted, no local training at all.** The
+[colored-blocks](https://universe.roboflow.com/autonomous-object-picking-robot/colored-blocks)
+model (CC BY 4.0, 98.9% mAP@50, classes `red`/`green`/`blue`) is called
+live over Roboflow's serverless inference API (`RoboflowAPIDetector`),
+instead of downloading its images and training a local copy — one less
+thing to train, at the cost of needing network access at detect() time.
+Setup:
+1. Get a free API key at
+   [app.roboflow.com/settings/api](https://app.roboflow.com/settings/api).
+2. Copy `config/secrets.example.yaml` to `config/secrets.yaml` if you
+   haven't already, and fill in `roboflow.api_key`.
+3. `config/checklists.yaml`'s `roboflow.model_id: colored-blocks/2` is
+   already set — nothing else to do.
 
-- **red_block / blue_block**:
-  [colored-blocks](https://universe.roboflow.com/autonomous-object-picking-robot/colored-blocks)
-  (CC BY 4.0, 513 images, classes `red`/`green`/`blue`, 98.9% mAP@50).
-- **sharpener**:
-  [Stationary Dataset](https://www.kaggle.com/datasets/abdullahsami10/stationary-dataset)
-  (CC BY 4.0, pre-split train/valid/test, classes `Pencil`/`Eraser`/`Sharpener`/`Ruler`).
+**sharpener — trained locally** on the
+[Stationary Dataset](https://www.kaggle.com/datasets/abdullahsami10/stationary-dataset)
+(CC BY 4.0, pre-split train/valid/test, classes `Pencil`/`Eraser`/`Sharpener`/`Ruler` —
+only `Sharpener` is needed here). Steps, from a downloaded/unzipped copy
+of the dataset:
+1. Write a `data.yaml` pointing at its `train`/`valid`/`test` image
+   folders, with `names: {0: Pencil, 1: Eraser, 2: Sharpener, 3: Ruler}`
+   (that's the class order the zip's label files actually use — verify
+   against a sample image + label pair before trusting it blindly, since
+   the dataset ships with no `data.yaml` of its own).
+2. Train: `yolo detect train data=data.yaml model=yolov8n.pt epochs=40 imgsz=416`
+   — a smaller `imgsz` than the usual 640 keeps CPU training time
+   reasonable (~20-30 min for this ~280-image dataset on a laptop CPU);
+   add `cache=True` to cache images in RAM once loaded instead of
+   re-reading from disk every epoch. Ultralytics prints the resulting
+   weights path when done, usually `runs/detect/train/weights/best.pt`.
+   A few of this dataset's label files mix segmentation-polygon and
+   plain-bbox rows for the same image; ultralytics drops those images
+   automatically (logged as "ignoring corrupt image/label") rather than
+   failing the run — a small loss of training data, not a bug to fix.
+3. Copy that `best.pt` to `models/best.pt` (or wherever
+   `config/checklists.yaml`'s `yolo.weights` points).
 
-That's why `config/checklists.yaml` points `red_block`/`blue_block`/`sharpener`
-at classes `red`/`blue`/`Sharpener` — each dataset's own class names, so you
-don't have to relabel their images. A single model needs one consistent
-set of classes though, so the two sources need merging into one dataset:
+Already done once, as a real test of this pipeline (not just a
+walkthrough): 19 epochs completed in ~29 min on a laptop CPU (i7-7700HQ,
+no GPU) before hitting a `time=0.5`-hour cap, landing at mAP50 0.796 /
+precision 0.746 / recall 0.732 for the Sharpener class specifically.
+Checked against `find_missing_items()` on the dataset's held-out test
+split (images the model never trained or validated on): 27/33 (82%)
+correct — 14/19 true positives, 13/14 true negatives, 1 false positive.
+Good enough to demo; more epochs or a larger `imgsz` would likely improve
+it further if you have the CPU time (or a GPU) to spare.
 
-1. On Roboflow, open the [colored-blocks
-   dataset](https://universe.roboflow.com/autonomous-object-picking-robot/colored-blocks)
-   and click **Fork Dataset** into your own (free) workspace — this copies
-   its 513 labelled red/green/blue images into a project you can edit.
-2. Download the [Stationary
-   Dataset](https://www.kaggle.com/datasets/abdullahsami10/stationary-dataset)
-   from Kaggle (Download button, or `kaggle datasets download -d
-   abdullahsami10/stationary-dataset` with the Kaggle CLI) and unzip it —
-   it's already in YOLO format with `images/`/`labels/` folders.
-3. In that same forked Roboflow project, use **Upload Dataset** to import
-   the Kaggle images + YOLO labels — Roboflow matches classes by name, so
-   this adds `Pencil`/`Eraser`/`Sharpener`/`Ruler` alongside the existing
-   `red`/`green`/`blue`. The extra classes you don't need (green, pencil,
-   eraser, ruler) are harmless to leave in — the project's `item_classes`
-   just never references them.
-4. Generate a new dataset version and export it in **YOLOv8** format —
-   this gives you one `data.yaml` plus labelled image folders covering
-   every class from both sources.
-5. Train: `yolo detect train data=data.yaml model=yolov8n.pt epochs=50 imgsz=640`
-   — ultralytics prints the resulting weights path when done, usually
-   `runs/detect/train/weights/best.pt`.
-6. Copy that file to `models/best.pt` (or wherever `config/checklists.yaml`'s
-   `yolo.weights` points). Double-check the exact class name casing in the
-   exported `data.yaml` matches `item_classes` in `config/checklists.yaml`
-   — YOLO class names are case-sensitive.
-
-If your actual objects don't look enough like either dataset (different
-block colour/shape, different sharpener), capture and label your own
-photos instead — run `tools/capture_training_images.py red_block
-blue_block sharpener`, add them to the same Roboflow project under your
-own class names, and point `item_classes` at those instead.
+Only need one backend? `build_detector()` is fine with just the local
+model, or just the Roboflow one — it only combines both when both are
+configured. If your actual objects don't look enough like either dataset,
+capture and label your own instead:
+`tools/capture_training_images.py red_block blue_block sharpener`, then
+train locally per the sharpener steps above and point `item_classes` in
+`config/checklists.yaml` at your own class names.
 
 Both datasets are CC BY 4.0 — attribution is required if you use them.
 Roboflow's project page has a ready-made citation under "Cite This
 Project"; the Kaggle page has an equivalent under its metadata section.
 Include both in your final report/slides.
 
-Neither the trained weights nor any captured/downloaded photos are
-committed to git (see `.gitignore`) — they're per-lab, per-lighting build
-artifacts, not source.
+Neither trained weights, the Roboflow API key, nor any captured/downloaded
+photos are committed to git (see `.gitignore`) — they're per-lab secrets
+or build artifacts, not source.
 
 If `pyzbar` fails to install (it needs a system library called `libzbar`
 that pip can't install by itself on Linux — Windows usually just works),

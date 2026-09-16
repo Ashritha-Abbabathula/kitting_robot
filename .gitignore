@@ -6,8 +6,12 @@ build/
 devel/
 .vscode/
 
-# Trained YOLO weights and captured training photos are build artifacts,
-# not source — train your own per kitting_logic/vision_logic.py's steps.
+# Trained YOLO weights and captured/downloaded training photos are build
+# artifacts, not source — train your own per kitting_logic/vision_logic.py's
+# steps.
 models/
 training_images/
+training_data/
 runs/
+archive.zip
+yolov8n.pt

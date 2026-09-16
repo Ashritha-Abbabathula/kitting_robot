@@ -1,39 +1,37 @@
 """
 "Is this item on the table?" logic — no ROS, no hardware dependency.
 
-Each item is identified by a YOLOv8 class name (configured in
+Each item is identified by a class name (configured in
 config/checklists.yaml under item_classes), and we call it "present" if
-the model detects that class in the camera frame with at least the
-configured confidence. This replaced an earlier HSV colour-blob approach,
-which broke down under lighting changes and couldn't tell two same-
-coloured items apart.
+some detector — a locally trained YOLOv8 model, or a hosted Roboflow
+model called over the network, or both combined via CompositeDetector —
+reports that class with at least the configured confidence. This replaced
+an earlier HSV colour-blob approach, which broke down under lighting
+changes and couldn't tell two same-coloured items apart.
 
-To get a working model:
-    1. Take ~30-50 photos of each item, varying angle/background/lighting
-       a bit (tools/capture_training_images.py does this for you). Or
-       start from a public dataset instead — see the README's "Training
-       the YOLOv8 model" section for a red/blue blocks dataset that
-       already fits this project.
-    2. Label them with a free tool (Roboflow's web UI or LabelImg). Class
-       names don't have to match the item names above — item_classes in
-       config/checklists.yaml maps each item to whatever the model calls
-       it (e.g. item "red_block" -> class "red"). Export in YOLOv8 format
-       — this gives you a data.yaml plus labelled image folders.
-    3. Train:
-           yolo detect train data=data.yaml model=yolov8n.pt epochs=50 imgsz=640
-       A few dozen images per class and 50 epochs is enough for a fixed
-       tabletop demo; ultralytics prints the best.pt path when it's done
-       (usually runs/detect/train/weights/best.pt).
-    4. Copy that best.pt to the path config/checklists.yaml's `yolo.weights`
-       points at (default: models/best.pt).
+Two ways to get a working detector for an item, see the README's
+"Training the YOLOv8 model" section for the full steps:
 
-Until a model exists at that path, YoloDetector raises YoloNotConfigured
-with those same steps, rather than silently detecting nothing.
+  A) Use an existing public model over Roboflow's hosted inference API
+     (RoboflowAPIDetector) — no local training at all. Needs an API key
+     in config/secrets.yaml's roboflow.api_key (free, from
+     app.roboflow.com/settings/api) and a model_id in
+     config/checklists.yaml's roboflow.model_id.
+  B) Train your own local model (YoloDetector) from photos — your own
+     captures (tools/capture_training_images.py) and/or a public dataset,
+     merged in Roboflow and exported/trained locally. Point
+     config/checklists.yaml's yolo.weights at the resulting best.pt.
+
+build_detector() wires up whichever of these are configured (both is
+fine — different items can come from different backends) and raises
+DetectorNotConfigured with setup steps if neither is available, rather
+than silently detecting nothing.
 """
 from typing import Dict, List, Optional, Protocol
 import os
 
 import numpy as np
+import yaml
 
 
 class Detector(Protocol):
@@ -48,21 +46,26 @@ class Detector(Protocol):
         ...
 
 
-class YoloNotConfigured(RuntimeError):
-    """Raised when no trained weights file exists yet at the configured path."""
+class DetectorNotConfigured(RuntimeError):
+    """Raised when neither a local model nor a hosted API is set up yet."""
     pass
+
+
+# Kept as an alias: earlier code/docs referred to this as YoloNotConfigured
+# specifically. DetectorNotConfigured covers the Roboflow-API case too.
+YoloNotConfigured = DetectorNotConfigured
 
 
 class YoloDetector:
     """
-    Thin wrapper around an Ultralytics YOLOv8 model. Loads the weights
-    once — that's the expensive part — then .detect() is just a forward
-    pass per frame.
+    Thin wrapper around a locally-loaded Ultralytics YOLOv8 model. Loads
+    the weights once — that's the expensive part — then .detect() is just
+    a forward pass per frame.
     """
 
     def __init__(self, weights_path: str, min_predict_confidence: float = 0.1):
         if not os.path.exists(weights_path):
-            raise YoloNotConfigured(
+            raise DetectorNotConfigured(
                 f"No YOLO weights found at {weights_path!r}. Train a model on "
                 f"your own items and point config/checklists.yaml's yolo.weights "
                 f"at it — see the steps at the top of kitting_logic/vision_logic.py."
@@ -101,6 +104,125 @@ def get_detector(weights_path: str) -> YoloDetector:
     if key not in _detector_cache:
         _detector_cache[key] = YoloDetector(weights_path)
     return _detector_cache[key]
+
+
+class RoboflowAPIDetector:
+    """
+    Calls a model hosted on Roboflow's inference API instead of running
+    one locally — for an item already covered by an existing public
+    Roboflow model (see config/checklists.yaml's roboflow.model_id),
+    training your own copy would just be redundant.
+
+    Uses Roboflow's plain REST endpoint (detect.roboflow.com) directly via
+    stdlib urllib rather than their `inference_sdk` package: that package
+    caps at Python <3.13 (no wheel for 3.14+ at time of writing), which
+    would make this an unreliable dependency depending on whoever's
+    running the project. The REST contract is simple enough that the SDK
+    isn't buying much anyway — see
+    https://docs.roboflow.com/deploy/hosted-api for the endpoint's docs.
+
+    Needs network access at detect() time (one HTTP call per frame) — this
+    trades local setup/training for a per-call round trip, which is fine
+    for the ~1 check/second this project does but not for a tight loop.
+    """
+
+    def __init__(self, api_key: str, model_id: str):
+        if not api_key:
+            raise DetectorNotConfigured(
+                "No Roboflow API key configured. Get a free one at "
+                "app.roboflow.com/settings/api and put it in config/secrets.yaml's "
+                "roboflow.api_key (see config/secrets.example.yaml)."
+            )
+        self._api_key = api_key
+        self._model_id = model_id
+
+    def detect(self, frame: np.ndarray) -> Dict[str, float]:
+        import base64
+        import json
+        import urllib.request
+
+        import cv2  # already a core project dependency
+
+        ok, buf = cv2.imencode(".jpg", frame)
+        if not ok:
+            return {}
+        image_b64 = base64.b64encode(buf.tobytes())
+
+        url = f"https://detect.roboflow.com/{self._model_id}?api_key={self._api_key}"
+        request = urllib.request.Request(
+            url, data=image_b64, headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            result = json.loads(response.read())
+
+        best: Dict[str, float] = {}
+        for pred in result.get("predictions", []):
+            name = pred["class"]
+            conf = float(pred["confidence"])
+            if conf > best.get(name, 0.0):
+                best[name] = conf
+        return best
+
+
+class CompositeDetector:
+    """
+    Merges detections from several sub-detectors into one dict, so
+    different items can be recognized by different backends — e.g.
+    red_block/blue_block via a hosted Roboflow model, sharpener via a
+    locally trained one. Runs every sub-detector on the same frame each
+    call; if the same class name comes back from more than one, the
+    higher confidence wins.
+    """
+
+    def __init__(self, detectors: List[Detector]):
+        self._detectors = detectors
+
+    def detect(self, frame: np.ndarray) -> Dict[str, float]:
+        merged: Dict[str, float] = {}
+        for d in self._detectors:
+            for name, conf in d.detect(frame).items():
+                if conf > merged.get(name, 0.0):
+                    merged[name] = conf
+        return merged
+
+
+def build_detector(config: dict, secrets_path: str, weights_path: str) -> Detector:
+    """
+    Builds the detector used by perception_node/demo_integration from
+    config/checklists.yaml (`config`, already parsed) plus
+    config/secrets.yaml (`secrets_path`, for the Roboflow API key) and the
+    resolved local weights path. Combines whichever backends are actually
+    configured:
+        - RoboflowAPIDetector, if config has a `roboflow.model_id` AND
+          secrets.yaml has a `roboflow.api_key`
+        - YoloDetector, if a weights file exists at `weights_path`
+    Raises DetectorNotConfigured if neither is available — silently
+    detecting nothing would be worse than a clear error here.
+    """
+    detectors: List[Detector] = []
+
+    roboflow_cfg = config.get("roboflow")
+    if roboflow_cfg and roboflow_cfg.get("model_id"):
+        api_key = None
+        if os.path.exists(secrets_path):
+            with open(secrets_path) as f:
+                secrets = yaml.safe_load(f) or {}
+            api_key = secrets.get("roboflow", {}).get("api_key")
+        if api_key:
+            detectors.append(RoboflowAPIDetector(api_key, roboflow_cfg["model_id"]))
+
+    if os.path.exists(weights_path):
+        detectors.append(get_detector(weights_path))
+
+    if not detectors:
+        raise DetectorNotConfigured(
+            "No detector backend is configured: no Roboflow API key in "
+            f"{secrets_path!r} (see roboflow.api_key in "
+            f"config/secrets.example.yaml) and no local model at "
+            f"{weights_path!r} (see kitting_logic/vision_logic.py's top "
+            f"comment for how to train one)."
+        )
+    return detectors[0] if len(detectors) == 1 else CompositeDetector(detectors)
 
 
 def item_present(detections: Dict[str, float], class_name: str, confidence: float) -> bool:

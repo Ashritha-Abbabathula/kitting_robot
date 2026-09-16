@@ -38,7 +38,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from kitting_logic.qr_logic import decode_qr, normalize_mode
 from kitting_logic.checklist_logic import load_checklists, get_required_items
-from kitting_logic.vision_logic import find_missing_items, get_detector, YoloNotConfigured
+from kitting_logic.vision_logic import find_missing_items, build_detector, DetectorNotConfigured
 from kitting_logic.notify_logic import format_missing_message, format_completion_message, build_notifier
 from kitting_logic.dobot_logic import SimulatedDobot, run_pick_and_place
 from kitting_logic.dobot_logic import run_pick_and_place as _rpp  # noqa: F401 (import proves the module wires up)
@@ -69,20 +69,26 @@ def make_colored_frame(h, w, bgr):
 
 class _ScriptedDetector:
     """
-    Stands in for a real YOLOv8 model in the no-camera demo. A trained
+    Stands in for a real detector in the no-camera demo. A trained
     detector needs an actual photo of an actual item to say anything useful
     — a solid-colour rectangle won't do — so instead this just reports
     whatever items `currently_present` says are on the table, each with
-    confidence 1.0. That's enough to walk through the same
-    find_missing_items() logic the real webcam/ROS path uses, without
-    needing a camera, real items, or a trained model.
+    confidence 1.0, translated to their configured class_name (the same
+    translation item_classes does for a real detector) so find_missing_items'
+    class-name lookup matches. That's enough to walk through the same
+    logic the real webcam/ROS path uses, without needing a camera, real
+    items, or a trained model.
     """
 
-    def __init__(self):
+    def __init__(self, item_classes):
+        self._item_classes = item_classes
         self.currently_present = []
 
     def detect(self, frame):
-        return {name: 1.0 for name in self.currently_present}
+        return {
+            self._item_classes.get(name, {}).get("class_name", name): 1.0
+            for name in self.currently_present
+        }
 
 
 def _mode_display_text(mode):
@@ -238,8 +244,8 @@ def main():
         # ---- Fully real path: real QR, real item checking, nothing pretended ----
         weights_path = os.path.join(HERE, config.get("yolo", {}).get("weights", "models/best.pt"))
         try:
-            detector = get_detector(weights_path)
-        except YoloNotConfigured as e:
+            detector = build_detector(config, secrets_path, weights_path)
+        except DetectorNotConfigured as e:
             print(f"ERROR: {e}")
             sys.exit(1)
 
@@ -294,7 +300,7 @@ def main():
 
         banner("STEP 3/4 — perception_node checks the table (synthetic), notify_node reports gaps")
         complete = False
-        detector = _ScriptedDetector()
+        detector = _ScriptedDetector(item_classes)
         frame = make_colored_frame(200, 400, (40, 40, 40))  # ignored by _ScriptedDetector — just a
         # placeholder frame, since a real YOLO model needs an actual photo of an actual item, not a
         # solid-colour rectangle, to detect anything.

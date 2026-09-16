@@ -27,7 +27,7 @@ from std_msgs.msg import String, Bool
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from kitting_logic.qr_logic import decode_qr, normalize_mode
 from kitting_logic.checklist_logic import load_checklists, get_required_items
-from kitting_logic.vision_logic import find_missing_items, get_detector, YoloNotConfigured
+from kitting_logic.vision_logic import find_missing_items, build_detector, DetectorNotConfigured
 
 
 def main():
@@ -49,9 +49,10 @@ def main():
     weights_path = os.path.join(
         os.path.dirname(config_path), "..", config.get("yolo", {}).get("weights", "models/best.pt")
     )
+    secrets_path = os.path.join(os.path.dirname(config_path), "secrets.yaml")
     try:
-        detector = get_detector(weights_path)
-    except YoloNotConfigured as e:
+        detector = build_detector(config, secrets_path, weights_path)
+    except DetectorNotConfigured as e:
         rospy.logerr(f"perception_node: {e}")
         return
 
