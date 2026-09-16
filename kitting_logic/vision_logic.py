@@ -113,13 +113,15 @@ class RoboflowAPIDetector:
     Roboflow model (see config/checklists.yaml's roboflow.model_id),
     training your own copy would just be redundant.
 
-    Uses Roboflow's plain REST endpoint (detect.roboflow.com) directly via
-    stdlib urllib rather than their `inference_sdk` package: that package
-    caps at Python <3.13 (no wheel for 3.14+ at time of writing), which
-    would make this an unreliable dependency depending on whoever's
-    running the project. The REST contract is simple enough that the SDK
-    isn't buying much anyway — see
-    https://docs.roboflow.com/deploy/hosted-api for the endpoint's docs.
+    Uses Roboflow's serverless REST endpoint directly via stdlib urllib
+    rather than their `inference_sdk` package: that package caps at Python
+    <3.13 (no wheel for 3.14+ at time of writing), which would make this
+    an unreliable dependency depending on whoever's running the project.
+    See https://docs.roboflow.com/guides/run-model-serverless-api for the
+    endpoint's docs — POST to serverless.roboflow.com/{model_id} with the
+    API key as a Bearer token (NOT a query param — that hits the older
+    detect.roboflow.com contract and 401s with "not authorized for
+    serverless inference").
 
     Needs network access at detect() time (one HTTP call per frame) — this
     trades local setup/training for a per-call round trip, which is fine
@@ -148,9 +150,14 @@ class RoboflowAPIDetector:
             return {}
         image_b64 = base64.b64encode(buf.tobytes())
 
-        url = f"https://detect.roboflow.com/{self._model_id}?api_key={self._api_key}"
+        url = f"https://serverless.roboflow.com/{self._model_id}"
         request = urllib.request.Request(
-            url, data=image_b64, headers={"Content-Type": "application/x-www-form-urlencoded"}
+            url,
+            data=image_b64,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Bearer {self._api_key}",
+            },
         )
         with urllib.request.urlopen(request, timeout=10) as response:
             result = json.loads(response.read())
@@ -172,15 +179,31 @@ class CompositeDetector:
     locally trained one. Runs every sub-detector on the same frame each
     call; if the same class name comes back from more than one, the
     higher confidence wins.
+
+    A network-backed sub-detector (RoboflowAPIDetector) can fail per-call
+    for reasons that have nothing to do with the others — a bad/expired
+    key, a timeout, Roboflow being briefly down. Those failures are caught
+    and logged rather than raised, so one flaky backend degrades to "that
+    backend's items are missing this frame" instead of crashing detection
+    entirely (which would also stop a perfectly good local model from
+    reporting anything).
     """
 
     def __init__(self, detectors: List[Detector]):
         self._detectors = detectors
+        self._warned = set()  # detector types we've already logged a failure for
 
     def detect(self, frame: np.ndarray) -> Dict[str, float]:
         merged: Dict[str, float] = {}
         for d in self._detectors:
-            for name, conf in d.detect(frame).items():
+            try:
+                detections = d.detect(frame)
+            except Exception as e:
+                if type(d) not in self._warned:
+                    print(f"[vision] {type(d).__name__} failed, continuing without it: {e}")
+                    self._warned.add(type(d))
+                continue
+            for name, conf in detections.items():
                 if conf > merged.get(name, 0.0):
                     merged[name] = conf
         return merged
